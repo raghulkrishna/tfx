@@ -110,9 +110,8 @@ class PenguinPipelineLocalEndToEndTest(tf.test.TestCase,
   def _make_beam_pipeline_args(self):
     return []
 
-  @parameterized.parameters(
-      ('keras',),
-      ('flax_experimental',))
+  @parameterized.parameters(('keras',), ('flax_experimental',),
+                            ('tfdf_experimental',))
   def testPenguinPipelineLocal(self, model_framework):
     module_file = self._module_file_name(model_framework)
     pipeline = penguin_pipeline_local._create_pipeline(
@@ -166,9 +165,10 @@ class PenguinPipelineLocalEndToEndTest(tf.test.TestCase,
     self.assertLen(store.get_artifacts(), artifact_count)
     self.assertLen(store.get_executions(), expected_execution_count * 3)
 
-  def testPenguinPipelineLocalWithTuner(self):
-    # TODO(b/180723394): Parameterize this test when Flax supports tuning.
-    module_file = self._module_file_name('keras')
+  @parameterized.parameters(('keras',), ('tfdf_experimental',))
+  def testPenguinPipelineLocalWithTuner(self, model_framework):
+    # TODO(b/180723394): Add Flax to this test when Flax supports tuning.
+    module_file = self._module_file_name(model_framework)
     LocalDagRunner().run(
         penguin_pipeline_local._create_pipeline(
             pipeline_name=self._pipeline_name,
@@ -200,7 +200,8 @@ class PenguinPipelineLocalEndToEndTest(tf.test.TestCase,
 
     self._assertPipelineExecution(has_tuner=True)
 
-  @parameterized.parameters(('keras',), ('flax_experimental',))
+  @parameterized.parameters(('keras',), ('flax_experimental',),
+                            ('tfdf_experimental',))
   def testPenguinPipelineLocalWithBulkInferrer(self, model_framework):
     module_file = self._module_file_name(model_framework)
     LocalDagRunner().run(

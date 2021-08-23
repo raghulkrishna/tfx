@@ -196,6 +196,9 @@ def make_extra_packages_examples():
       'flax>=0.3.3,<0.4',
       # Required for tfx/examples/penguin/penguin_utils_cloud_tuner.py
       'tensorflow-cloud>=0.1,<0.2',
+      # Required for tfx/examples/penguin/penguin_utils_tfdf_experimental.py
+      # 0.1.9 is needed for TF version >=2.6
+      'tensorflow-decision-forests>=0.1.9',
   ]
 
 
