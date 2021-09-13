@@ -316,7 +316,30 @@ message NodeExecutionOptions {
     // Whether or not to enable cache for this node.
     bool enable_cache = 1;
   }
+  // Settings used by the chief node.
+  message ChiefSettings {
+    message LatestPipelineRunStrategy {}
+    message BasePipelineRunStrategy {
+      string base_run_id = 1;
+    }
+    oneof artifact_reuse_strategy {
+      LatestPipelineRunStrategy latest_pipeline_run_strategy = 1;
+      BasePipelineRunStrategy base_pipeline_run_strategy = 2;
+    }
+  }
+  message Run {
+    // Output only. If set, this Node is the chief.
+    ChiefSettings chief_settings = 1;
+  }
+  message Skip {
+    bool child_in_partial_run = 1;
+  }
   CachingOptions caching_options = 1;
+  // Attached by compiler or platform-level tooling.
+  oneof partial_run_option {
+    Run run = 2;
+    Skip skip = 3;
+  }
 }
 // Pipeline node definition.
 message PipelineNode {
