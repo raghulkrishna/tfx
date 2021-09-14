@@ -20,6 +20,7 @@ from tfx.dsl.components.common import resolver
 from tfx.orchestration import data_types
 from tfx.orchestration import metadata
 from tfx.types import artifact_utils
+from tfx.types import channel_utils
 from tfx.utils import doc_controls
 
 import ml_metadata as mlmd
@@ -58,7 +59,7 @@ class LatestArtifactStrategy(resolver.ResolverStrategy):
       self,
       pipeline_info: data_types.PipelineInfo,
       metadata_handler: metadata.Metadata,
-      source_channels: Dict[str, types.Channel],
+      source_channels: Dict[str, types.ComponentChannel],
   ) -> resolver.ResolveResult:
     pipeline_context = metadata_handler.get_pipeline_context(pipeline_info)
     if pipeline_context is None:
@@ -66,15 +67,18 @@ class LatestArtifactStrategy(resolver.ResolverStrategy):
 
     candidate_dict = {}
     for k, c in source_channels.items():
-      candidate_artifacts = metadata_handler.get_qualified_artifacts(
-          contexts=[pipeline_context],
-          type_name=c.type_name,
-          producer_component_id=c.producer_component_id,
-          output_key=c.output_key)
-      candidate_dict[k] = [
-          artifact_utils.deserialize_artifact(a.type, a.artifact)
-          for a in candidate_artifacts
-      ]
+      artifact_list = []
+      for input_channel in channel_utils.get_input_channels(c):
+        candidate_artifacts = metadata_handler.get_qualified_artifacts(
+            contexts=[pipeline_context],
+            type_name=input_channel.type_name,
+            producer_component_id=input_channel.producer_component_id,
+            output_key=input_channel.output_key)
+        artifact_list.extend([
+            artifact_utils.deserialize_artifact(a.type, a.artifact)
+            for a in candidate_artifacts
+        ])
+      candidate_dict[k] = artifact_list
 
     resolved_dict = self._resolve(candidate_dict)
     resolve_state_dict = {

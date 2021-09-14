@@ -146,7 +146,7 @@ class _ResolverDriver(base_driver.BaseDriver):
   # incomplete data.
   def pre_execution(
       self,
-      input_dict: Dict[str, types.Channel],
+      input_dict: Dict[str, types.ComponentChannel],
       output_dict: Dict[str, types.Channel],
       exec_properties: Dict[str, Any],
       driver_args: data_types.DriverArgs,
@@ -224,7 +224,7 @@ class Resolver(base_node.BaseNode):
                strategy_class: Optional[Type[ResolverStrategy]] = None,
                config: Optional[Dict[str, json_utils.JsonableType]] = None,
                function: Optional[resolver_function.ResolverFunction] = None,
-               **channels: types.Channel):
+               **channels: types.ComponentChannel):
     """Init function for Resolver.
 
     Args:
@@ -260,9 +260,9 @@ class Resolver(base_node.BaseNode):
     self._input_dict = channels
     self._output_dict = {}
     for k, c in self._input_dict.items():
-      if not isinstance(c, types.Channel):
+      if not isinstance(c, types.ComponentChannel):
         raise ValueError(
-            f'Expected extra kwarg {k!r} to be of type `tfx.types.Channel` '
+            f'Expected extra kwarg {k!r} to be of type `tfx.types.ComponentChannel` '
             f'but got {c!r} instead.')
       # TODO(b/161490287): remove static artifacts.
       self._output_dict[k] = (

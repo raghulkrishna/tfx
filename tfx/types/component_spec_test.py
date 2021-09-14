@@ -22,6 +22,8 @@ from tfx.proto import example_gen_pb2
 from tfx.types import component_spec
 from tfx.types.artifact import Artifact
 from tfx.types.channel import Channel
+from tfx.types.channel import InputUnionChannel
+from tfx.types.channel import union
 from tfx.types.component_spec import ChannelParameter
 from tfx.types.component_spec import ComponentSpec
 from tfx.types.component_spec import ExecutionParameter
@@ -127,6 +129,24 @@ class ComponentSpecTest(tf.test.TestCase):
         output=Channel(type=_OutputArtifact))
     self.assertIsInstance(spec.exec_properties['proto'], str)
     self.assertEqual(spec.exec_properties['proto'], proto_str)
+
+  def testComponentspecWithInputUnionChannel(self):
+    input_channel_1 = Channel(type=_InputArtifact)
+    input_channel_2 = Channel(type=_InputArtifact)
+    output_channel = Channel(type=_OutputArtifact)
+    spec = _BasicComponentSpec(
+        folds=10,
+        input=union([input_channel_1, input_channel_2]),
+        output=output_channel)
+
+    expected_union_channel = InputUnionChannel(
+        type=_InputArtifact, input_channels=[input_channel_1, input_channel_2])
+    # Verify properties.
+    self.assertEqual(10, spec.exec_properties['folds'])
+    self.assertEqual(spec.inputs['input'].type, expected_union_channel.type)
+    self.assertEqual(spec.inputs['input'].input_channels,
+                     expected_union_channel.input_channels)
+    self.assertIs(spec.outputs['output'], output_channel)
 
   def testInvalidComponentspecMissingProperties(self):
 

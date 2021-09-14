@@ -20,7 +20,7 @@ from typing import Any, Dict, List, Optional, Type
 
 from tfx.dsl.placeholder import placeholder
 from tfx.types.artifact import Artifact
-from tfx.types.channel import Channel
+from tfx.types.channel import ComponentChannel
 from tfx.utils import abc_utils
 from tfx.utils import json_utils
 from tfx.utils import proto_utils
@@ -411,14 +411,14 @@ class ChannelParameter(_ComponentParameter):
     self.optional = optional
 
   def __repr__(self):
-    return 'ChannelParameter(type: %s)' % (self.type,)
+    return 'ChannelParameter(type: %s)' % self.type
 
   def __eq__(self, other):
     return (isinstance(other.__class__, self.__class__) and
             other.type == self.type and other.optional == self.optional)
 
-  def type_check(self, arg_name: str, value: Channel):
-    if ((not isinstance(value, Channel)) or
+  def type_check(self, arg_name: str, value: ComponentChannel):
+    if ((not isinstance(value, ComponentChannel)) or
         not (value.type is self.type or
              value.type in getattr(self.type, COMPATIBLE_TYPES_KEY, ()))):
       raise TypeError('Argument %s should be a Channel of type %r (got %s).' %

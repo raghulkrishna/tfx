@@ -19,6 +19,8 @@ from tfx.types.artifact import Artifact
 from tfx.types.artifact import Property
 from tfx.types.artifact import PropertyType
 from tfx.types.channel import Channel
+from tfx.types.channel import InputUnionChannel
+from tfx.types.channel import union
 
 from ml_metadata.proto import metadata_store_pb2
 
@@ -90,6 +92,26 @@ class ChannelTest(tf.test.TestCase):
     self.assertIs(future.channel, channel)
     self.assertIsInstance(future[0], placeholder.ChannelWrappedPlaceholder)
     self.assertIsInstance(future.value, placeholder.ChannelWrappedPlaceholder)
+
+  def testValidUnionChannel(self):
+    channel1 = Channel(type=_MyType)
+    channel2 = Channel(type=_MyType)
+    union_channel = union([channel1, channel2])
+    self.assertIs(union_channel.type_name, 'MyTypeName')
+    self.assertEqual(union_channel.input_channels, [channel1, channel2])
+
+  def testMismatchedUnionChannelType(self):
+    channel = Channel(type=_MyType)
+    another_channel = Channel(type=_AnotherType)
+    with self.assertRaises(TypeError):
+      union([channel, another_channel])
+    # Only list of Channel is allowed.
+    with self.assertRaises(TypeError):
+      union([channel, union([channel])])
+
+  def testEmptyInputUnionChannel(self):
+    with self.assertRaises(ValueError):
+      InputUnionChannel(type=_MyType, input_channels=[])
 
 
 if __name__ == '__main__':

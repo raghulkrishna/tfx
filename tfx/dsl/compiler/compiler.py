@@ -31,6 +31,7 @@ from tfx.orchestration import data_types_utils
 from tfx.orchestration import pipeline
 from tfx.proto.orchestration import executable_spec_pb2
 from tfx.proto.orchestration import pipeline_pb2
+from tfx.types import channel_utils
 from tfx.utils import deprecation_utils
 from tfx.utils import json_utils
 
@@ -77,13 +78,17 @@ class _CompilerContext:
 
   def implicit_upstream_nodes(
       self, here: base_node.BaseNode) -> List[base_node.BaseNode]:
-    return [self._pipeline_nodes_by_id[node_id]
-            for node_id in self._implicit_upstream_nodes[here.id]]
+    return [
+        self._pipeline_nodes_by_id[node_id]
+        for node_id in self._implicit_upstream_nodes[here.id]
+    ]
 
   def implicit_downstream_nodes(
       self, here: base_node.BaseNode) -> List[base_node.BaseNode]:
-    return [self._pipeline_nodes_by_id[node_id]
-            for node_id in self._implicit_downstream_nodes[here.id]]
+    return [
+        self._pipeline_nodes_by_id[node_id]
+        for node_id in self._implicit_downstream_nodes[here.id]
+    ]
 
 
 class Compiler:
@@ -183,10 +188,11 @@ class Compiler:
     implicit_input_channels = {}
     predicates = conditional.get_predicates(tfx_node)
     if predicates:
-      implicit_keys_map = {
-          compiler_utils.implicit_channel_key(channel): key
-          for key, channel in tfx_node_inputs.items()
-      }
+      implicit_keys_map = {}
+      for key, channel in tfx_node_inputs.items():
+        for input_channel in channel_utils.get_input_channels(channel):
+          implicit_keys_map[compiler_utils.implicit_channel_key(
+              input_channel)] = key
       encoded_predicates = []
       for predicate in predicates:
         for channel in predicate.dependent_channels():
@@ -208,50 +214,53 @@ class Compiler:
     for key, value in itertools.chain(tfx_node_inputs.items(),
                                       implicit_input_channels.items()):
       input_spec = node.inputs.inputs[key]
-      channel = input_spec.channels.add()
+      for input_channel in channel_utils.get_input_channels(value):
+        channel = input_spec.channels.add()
 
-      # If the node input comes from another node's output, fill the context
-      # queries with the producer node's contexts.
-      if value in compile_context.node_outputs:
-        channel.producer_node_query.id = value.producer_component_id
+        # If the node input comes from another node's output, fill the context
+        # queries with the producer node's contexts.
+        if input_channel in compile_context.node_outputs:
+          channel.producer_node_query.id = input_channel.producer_component_id
 
-        # Here we rely on pipeline.components to be topologically sorted.
-        assert value.producer_component_id in compile_context.node_pbs, (
-            "producer component should have already been compiled.")
-        producer_pb = compile_context.node_pbs[value.producer_component_id]
-        for producer_context in producer_pb.contexts.contexts:
+          # Here we rely on pipeline.components to be topologically sorted.
+          assert input_channel.producer_component_id in compile_context.node_pbs, (
+              "producer component should have already been compiled.")
+          producer_pb = compile_context.node_pbs[
+              input_channel.producer_component_id]
+          for producer_context in producer_pb.contexts.contexts:
+            context_query = channel.context_queries.add()
+            context_query.type.CopyFrom(producer_context.type)
+            context_query.name.CopyFrom(producer_context.name)
+
+        # If the node input does not come from another node's output, fill the
+        # context queries based on Channel info. We requires every channel to
+        # have pipeline context and will fill it automatically.
+        else:
+          # Add pipeline context query.
           context_query = channel.context_queries.add()
-          context_query.type.CopyFrom(producer_context.type)
-          context_query.name.CopyFrom(producer_context.name)
+          context_query.type.CopyFrom(pipeline_context_pb.type)
+          context_query.name.CopyFrom(pipeline_context_pb.name)
 
-      # If the node input does not come from another node's output, fill the
-      # context queries based on Channel info. We requires every channel to have
-      # pipeline context and will fill it automatically.
-      else:
-        # Add pipeline context query.
-        context_query = channel.context_queries.add()
-        context_query.type.CopyFrom(pipeline_context_pb.type)
-        context_query.name.CopyFrom(pipeline_context_pb.name)
+          # Optionally add node context query.
+          if input_channel.producer_component_id:
+            # Add node context query if `producer_component_id` is present.
+            channel.producer_node_query.id = input_channel.producer_component_id
+            node_context_query = channel.context_queries.add()
+            node_context_query.type.name = constants.NODE_CONTEXT_TYPE_NAME
+            node_context_query.name.field_value.string_value = "{}.{}".format(
+                compile_context.pipeline_info.pipeline_context_name,
+                input_channel.producer_component_id)
 
-        # Optionally add node context query.
-        if value.producer_component_id:
-          # Add node context query if `producer_component_id` is present.
-          channel.producer_node_query.id = value.producer_component_id
-          node_context_query = channel.context_queries.add()
-          node_context_query.type.name = constants.NODE_CONTEXT_TYPE_NAME
-          node_context_query.name.field_value.string_value = "{}.{}".format(
-              compile_context.pipeline_info.pipeline_context_name,
-              value.producer_component_id)
+        artifact_type = input_channel.type._get_artifact_type()  # pylint: disable=protected-access
+        channel.artifact_query.type.CopyFrom(artifact_type)
+        channel.artifact_query.type.ClearField("properties")
 
-      artifact_type = value.type._get_artifact_type()  # pylint: disable=protected-access
-      channel.artifact_query.type.CopyFrom(artifact_type)
-      channel.artifact_query.type.ClearField("properties")
+        if input_channel.output_key:
+          channel.output_key = input_channel.output_key
 
-      if value.output_key:
-        channel.output_key = value.output_key
-
-      # TODO(b/158712886): Calculate min_count based on if inputs are optional.
-      # min_count = 0 stands for optional input and 1 stands for required input.
+        # TODO(b/158712886): Calculate min_count based on if inputs are
+        # optional. min_count = 0 stands for optional input and 1 stands for
+        # required input.
 
     # TODO(b/170694459): Refactor special nodes as plugins.
     # Step 3.3: Special treatment for Resolver node.
@@ -322,10 +331,8 @@ class Compiler:
 
     return node
 
-  def _find_runtime_upstream_node_ids(
-      self,
-      context: _CompilerContext,
-      here: base_node.BaseNode) -> List[str]:
+  def _find_runtime_upstream_node_ids(self, context: _CompilerContext,
+                                      here: base_node.BaseNode) -> List[str]:
     """Finds all upstream nodes that the current node depends on."""
     result = set()
     for up in itertools.chain(here.upstream_nodes,
@@ -337,10 +344,8 @@ class Compiler:
     # Sort result so that compiler generates consistent results.
     return sorted(result)
 
-  def _find_runtime_downstream_node_ids(
-      self,
-      context: _CompilerContext,
-      here: base_node.BaseNode) -> List[str]:
+  def _find_runtime_downstream_node_ids(self, context: _CompilerContext,
+                                        here: base_node.BaseNode) -> List[str]:
     """Finds all downstream nodes that depend on the current node."""
     result = set()
     for down in itertools.chain(here.downstream_nodes,
@@ -352,11 +357,9 @@ class Compiler:
     # Sort result so that compiler generates consistent results.
     return sorted(result)
 
-  def _embed_upstream_resolver_nodes(
-      self,
-      context: _CompilerContext,
-      tfx_node: base_node.BaseNode,
-      node: pipeline_pb2.PipelineNode):
+  def _embed_upstream_resolver_nodes(self, context: _CompilerContext,
+                                     tfx_node: base_node.BaseNode,
+                                     node: pipeline_pb2.PipelineNode):
     """Embeds upstream Resolver nodes as a ResolverConfig.
 
     Iteratively reduces upstream resolver nodes into a resolver config of the
@@ -539,8 +542,7 @@ def _fully_qualified_name(cls: Type[Any]):
 
 
 def _compile_resolver_op(
-    op_node: resolver_op.OpNode,
-) -> pipeline_pb2.ResolverConfig.ResolverStep:
+    op_node: resolver_op.OpNode,) -> pipeline_pb2.ResolverConfig.ResolverStep:
   result = pipeline_pb2.ResolverConfig.ResolverStep()
   result.class_path = _fully_qualified_name(op_node.op_type)
   result.config_json = json_utils.dumps(op_node.kwargs)

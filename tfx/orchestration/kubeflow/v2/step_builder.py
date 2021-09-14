@@ -32,6 +32,7 @@ from tfx.orchestration.kubeflow.v2 import compiler_utils
 from tfx.orchestration.kubeflow.v2 import parameter_utils
 from tfx.types import artifact_utils
 from tfx.types import standard_artifacts
+from tfx.types.channel import Channel
 from tfx.utils import deprecation_utils
 
 from ml_metadata.proto import metadata_store_pb2
@@ -273,6 +274,8 @@ class StepBuilder:
     task_spec.task_info.name = self._name
     dependency_ids = [node.id for node in self._node.upstream_nodes]
     for name, input_channel in self._inputs.items():
+      if not isinstance(input_channel, Channel):
+        raise TypeError('Only single Channel is supported.')
       # If the redirecting map is provided (usually for latest blessed model
       # resolver, we'll need to redirect accordingly. Also, the upstream node
       # list will be updated and replaced by the new producer id.

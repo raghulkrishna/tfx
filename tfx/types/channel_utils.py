@@ -17,6 +17,8 @@ from typing import Dict, Iterable, List
 
 from tfx.types.artifact import Artifact
 from tfx.types.channel import Channel
+from tfx.types.channel import ComponentChannel
+from tfx.types.channel import InputUnionChannel
 
 
 def as_channel(artifacts: Iterable[Artifact]) -> Channel:
@@ -52,3 +54,13 @@ def unwrap_channel_dict(
     a dict of Text -> List[Artifact]
   """
   return dict((k, list(v.get())) for k, v in channel_dict.items())
+
+
+def get_input_channels(input_channel: ComponentChannel) -> List[Channel]:
+  """Converts ComponentChannel into a list of Channels."""
+  if isinstance(input_channel, Channel):
+    return [input_channel]
+  elif isinstance(input_channel, InputUnionChannel):
+    return list(input_channel.input_channels)
+  else:
+    raise RuntimeError(f'Unexpected Channel type: {type(input_channel)}')
