@@ -44,6 +44,7 @@ class RunComponentTest(absltest.TestCase):
         examples_uri=os.path.join(test_data_dir, 'csv_example_gen'),
         examples_split_names=artifact_utils.encode_split_names(
             ['train', 'eval']),
+        examples_version='1',
         statistics_path=output_data_dir,
         statistics_split_names_path=statistics_split_names_path,
     )
@@ -60,6 +61,28 @@ class RunComponentTest(absltest.TestCase):
         pathlib.Path(statistics_split_names_path).read_text(),
         '["train", "eval"]')
 
+  def testRunSchemaGen(self):
+    # Prepare the paths
+    test_data_dir = os.path.join(
+        os.path.dirname(os.path.dirname(__file__)), 'components', 'testdata')
+    output_data_dir = os.path.join(
+        os.environ.get('TEST_UNDECLARED_OUTPUTS_DIR', tempfile.mkdtemp()),
+        self._testMethodName)
+    fileio.makedirs(output_data_dir)
+
+    # Run SchemaGen
+    run_component.run_component(
+        full_component_class_name='tfx.components.SchemaGen',
+        statistics_path=os.path.join(test_data_dir, 'statistics_gen'),
+        statistics_split_names=artifact_utils.encode_split_names(
+            ['train', 'eval']),
+        infer_feature_shape='1',
+        schema_path=os.path.join(output_data_dir),
+    )
+
+    # Check the statistics_gen outputs
+    self.assertTrue(
+        fileio.exists(os.path.join(output_data_dir, 'schema.pbtxt')))
 
 if __name__ == '__main__':
   tf.test.main()
