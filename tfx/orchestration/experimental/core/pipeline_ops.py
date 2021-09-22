@@ -199,20 +199,10 @@ def stop_node(mlmd_handle: metadata.Metadata,
                   code=status_lib.Code.CANCELLED,
                   message='Cancellation requested by client.'))
 
-    executions = task_gen_utils.get_executions(mlmd_handle, node)
-    active_executions = [
-        e for e in executions if execution_lib.is_execution_active(e)
-    ]
-    if not active_executions:
-      # If there are no active executions, we're done.
-      return
-    if len(active_executions) > 1:
-      raise status_lib.StatusNotOkError(
-          code=status_lib.Code.INTERNAL,
-          message=(
-              f'Unexpected multiple active executions for node: {node_uid}'))
-  _wait_for_inactivation(
-      mlmd_handle, active_executions[0].id, timeout_secs=timeout_secs)
+  # Wait until the node is stopped or time out.
+  pipeline_state = pstate.PipelineState.load(mlmd_handle, node_uid.pipeline_uid)
+  _wait_for_node_state_inactivation(
+      pipeline_state, node_uid, timeout_secs=timeout_secs)
 
 
 @_to_status_not_ok_error
@@ -328,6 +318,34 @@ def _wait_for_inactivation(mlmd_handle: metadata.Metadata,
   def _is_inactivated() -> bool:
     [execution] = mlmd_handle.store.get_executions_by_id([execution_id])
     return not execution_lib.is_execution_active(execution)
+
+  return _wait_for_predicate(_is_inactivated, 'execution inactivation',
+                             timeout_secs)
+
+
+def _wait_for_node_state_inactivation(pipeline_state: pstate.PipelineState,
+                                      node_uid: task_lib.NodeUid,
+                                      timeout_secs: Optional[float]) -> None:
+  """Waits for the given node to become inactive.
+
+  Args:
+    pipeline_state: Pipeline state.
+    node_uid: Uid of the node whose inactivation is awaited.
+    timeout_secs: Amount of time in seconds to wait. If `None`, waits
+      indefinitely.
+
+  Raises:
+    StatusNotOkError: With error code `DEADLINE_EXCEEDED` if node is not
+      inactive after waiting approx. `timeout_secs`.
+  """
+
+  def _is_inactivated() -> bool:
+    with pipeline_state:
+      node_state = pipeline_state.get_node_state(node_uid)
+      return node_state.state in (pstate.NodeState.COMPLETE,
+                                  pstate.NodeState.FAILED,
+                                  pstate.NodeState.SKIPPED,
+                                  pstate.NodeState.STOPPED)
 
   return _wait_for_predicate(_is_inactivated, 'execution inactivation',
                              timeout_secs)
