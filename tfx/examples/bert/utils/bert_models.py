@@ -62,7 +62,7 @@ def compile_bert_classifier(
     loss: tf.keras.losses = tf.keras.losses.SparseCategoricalCrossentropy(
         from_logits=True),
     learning_rate: float = 2e-5,
-    metrics: Optional[List[Union[str, tf.keras.metrics.Metric]]] = None):
+    metrics: Optional[List[Union[str, tf.keras.metrics.Metric]]] = None):  # pytype: disable=invalid-annotation  # typed-keras
   """Compile the BERT classifier using suggested parameters.
 
   Args:
